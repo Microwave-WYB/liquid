@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.13"
+# requires-python = ">=3.12"
 # dependencies = [
 #     "httpx",
 #     "ktflow",
@@ -85,17 +85,19 @@ urls = ["http://ipv4.download.thinkbroadband.com/1MB.zip" for _ in range(5)]
 Path("downloads").mkdir(parents=True, exist_ok=True)
 
 with ThreadPoolExecutor(5) as executor:
-    (
+    file_creation_flow = (
         Flow(urls)
-        .zip(
-            Flow(urls)
-            .submit_map(executor, infer_name, recover=recover_infer_name)
-            .map(lambda name: Path.cwd() / "downloads" / name)
-            .map(create_temp_file)
-        )
+        .submit_map(executor, infer_name, recover_infer_name)
+        .map(lambda name: Path.cwd() / "downloads" / name)
+        .map(create_temp_file)
+    )
+    download_flow = (
+        Flow(urls)
+        .zip(file_creation_flow)
         .on_each(lambda pair: print(f"Downloading {pair[0]} to {pair[1]}"))
         .submit_map(executor, lambda pair: download_one(*pair), recover_download_one)
         .on_each(lambda path: print(f"File saved to {path}"))
         .map(rename_temp_file)
-        .collect(lambda path: print(f"File renamed to {path}"))
     )
+
+    download_flow.collect(lambda path: print(f"File renamed to {path}"))
