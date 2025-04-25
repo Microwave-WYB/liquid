@@ -1,0 +1,12 @@
+[project]
+name = "ktflow"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [{ name = "Yibo Wei", email = "david_wyb2001@outlook.com" }]
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
