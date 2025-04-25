@@ -9,11 +9,12 @@ class Flow[T]:
     def __init__(
         self,
         iterable: Iterable[T],
+        /,
     ) -> None:
         self.iterable = iterable
 
     def map[R](
-        self, fn: Callable[[T], R], recover: Callable[[T, Exception], Iterable[R]] | None = None
+        self, fn: Callable[[T], R], /, recover: Callable[[T, Exception], Iterable[R]] | None = None
     ) -> "Flow[R]":
         """
         Applies a function to each element of the flow and returns a new flow with the results.
@@ -83,14 +84,9 @@ class Flow[T]:
         """
         Equivalent to map, but uses an executor to submit the function with each element of the flow.
 
-        It is also equivalent to calling `submit` then explicitly call `map` the `future` to `future.result()`
-
         >>> from concurrent.futures import ThreadPoolExecutor
         >>> with ThreadPoolExecutor(max_workers=3) as executor:
         ...     Flow.of(1, 2, 3).submit_map(executor, lambda x: x * 2).to_list()
-        [2, 4, 6]
-        >>> with ThreadPoolExecutor(max_workers=3) as executor:
-        ...     Flow.of(1, 2, 3).submit(executor, lambda x: x * 2).map(lambda f: f.result()).to_list()
         [2, 4, 6]
 
         You can pass a custom `recover` function to handle exceptions raised by the function.
@@ -130,6 +126,7 @@ class Flow[T]:
     def flatmap[R](
         self,
         fn: Callable[[T], Iterable[R]],
+        /,
         recover: Callable[[T, Exception], Iterable[R]] | None = None,
     ) -> "Flow[R]":
         """
@@ -273,7 +270,7 @@ class Flow[T]:
         """
         return reduce(fn, self)
 
-    def take(self, n: int) -> "Flow[T]":
+    def take(self, n: int, /) -> "Flow[T]":
         """
         Take the first n items from the flow.
 
@@ -285,7 +282,7 @@ class Flow[T]:
         """
         return Flow(it for _, it in zip(range(n), self))
 
-    def drop(self, n: int) -> "Flow[T]":
+    def drop(self, n: int, /) -> "Flow[T]":
         """
         Drop the first n items and return the rest of the flow.
 
@@ -373,10 +370,15 @@ class Flow[T]:
 
 
 class FutureFlow[T](Flow[Future[T]]):
-    def __init__(self, iterable: Iterable[Future[T]]) -> None:
+    def __init__(self, iterable: Iterable[Future[T]], /) -> None:
         super().__init__(iterable)
 
-    def map_as_completed[R](self, fn: Callable[[Future[T]], R]) -> "Flow[R]":
+    def map_as_completed[R](
+        self,
+        fn: Callable[[Future[T]], R],
+        /,
+        recover: Callable[[Future[T], Exception], Iterable[R]] | None = None,
+    ) -> "Flow[R]":
         """
         Map each future to a value using the provided function and yield the results
 
@@ -386,10 +388,23 @@ class FutureFlow[T](Flow[Future[T]]):
         >>> with ThreadPoolExecutor(max_workers=3) as executor:
         ...     Flow.of(1, 2, 3).submit(executor, lambda x: x * 2).map_as_completed(lambda x: x.result()).to_set()
         {2, 4, 6}
-        """
 
-        def create_iter() -> Iterator[R]:
-            for future in as_completed(self):
-                yield fn(future)
+        You can pass a custom `recover` function to handle exceptions raised by the function.
+        The `recover` function will be called with the future that caused the error and the exception itself.
+        It should return an iterable of results.
+        """
+        if not recover:
+
+            def create_iter() -> Iterator[R]:
+                for future in as_completed(self):
+                    yield fn(future)
+        else:
+
+            def create_iter() -> Iterator[R]:
+                for future in as_completed(self):
+                    try:
+                        yield fn(future)
+                    except Exception as e:
+                        yield from recover(future, e)
 
         return Flow(create_iter())
