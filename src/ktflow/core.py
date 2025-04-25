@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterable, Iterator
-from concurrent.futures import Executor, Future, as_completed, wait
+from concurrent.futures import Executor, Future, as_completed
 from functools import reduce
 from itertools import chain
 from typing import Any
