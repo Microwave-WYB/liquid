@@ -458,16 +458,6 @@ class Flow[T]:
             result[k].append(item)
         return result
 
-    def partition_by[K](self, key_fn: Callable[[T], K], /) -> dict[K, "Flow[T]"]:
-        """
-        Partition elements by a key function.
-
-        >>> Flow.of(1, 2, 3, 4, 5).partition_by(lambda x: x % 2)
-        {1: Flow([1, 3, 5]), 0: Flow([2, 4])}
-        """
-        result = self.group_by(key_fn)
-        return {k: Flow(v) for k, v in result.items()}
-
     def any(self, fn: Callable[[T], bool], /) -> bool:
         """
         Check if any element in the flow satisfies the predicate function.
