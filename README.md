@@ -1,16 +1,21 @@
 # ktflow
 
-A simple, functional flow library for Python that allows method chaining for data processing operations, inspired by Kotlin's sequence operations.
+A simple, functional flow library for Python that allows method chaining for data processing operations, inspired by Kotlin's Flow.
 
 ## Features
 
 - Method chaining for common operations like `map`, `filter`, `reduce`
-- Support for parallel processing with executors
+- Support for parallel processing with `concurrent.futures` Executors.
 - Error handling with recovery functions
-- Simple, intuitive API inspired by Kotlin's sequence operations and flow API
+- Simple, intuitive API inspired by Kotlin's Flow API
 - Type hints for better IDE experience
+- Zero dependencies. This library is written in pure Python primarily using iterators.
 
 ## Installation
+
+Python `3.12` is the minimum required version. This library is heavily based on the new generic typing syntax introduced in Python 3.12.
+
+You can simply install it using pip:
 
 ```bash
 pip install git+https://github.com/Microwave-WYB/ktflow.git
@@ -71,6 +76,8 @@ print(result)  # [0, 20, 30]
 ```
 
 ## Demo
+
+[demo.py](/demo.py) is a simple parallel downloader that demonstrates the usage of ktflow.
 
 You can run the demo script using `uv`:
 
