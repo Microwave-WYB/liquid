@@ -82,10 +82,8 @@ with ThreadPoolExecutor(5) as executor:
                 .map(lambda name: Path.cwd() / "downloads" / name)
                 .map(create_temp_file)
             )
-            .submit(executor, lambda pair: download_one(*pair))
-            .map(lambda path: path.result())
+            .submit_map(executor, lambda pair: download_one(*pair))
             .map(rename_temp_file),
             total=len(urls),
         )
     )
-
