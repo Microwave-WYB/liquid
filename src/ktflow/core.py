@@ -65,14 +65,13 @@ class Flow[T]:
         if not recover:
             return Flow(map(fn, self))
 
-        def create_iter() -> Iterator[R]:
-            for it in self:
-                try:
-                    yield fn(it)
-                except Exception as e:
-                    yield from recover(it, e)
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield fn(it)
+            except Exception as e:
+                yield from recover(it, e)
 
-        return Flow(create_iter())
+        return self.flatmap(wrapper)
 
     def submit_map[R](
         self,
@@ -92,21 +91,25 @@ class Flow[T]:
         You can pass a custom `recover` function to handle exceptions raised by the function.
         The `recover` function will be called with the element that caused the error and the exception itself.
         It should return an iterable of results, similar to `flatmap`.
+
+        >>> def must_positive(x: int) -> int:
+        ...     if x < 0:
+        ...         raise ValueError(f"Expected positive number, got {x}")
+        ...     return x
+        >>> with ThreadPoolExecutor(max_workers=3) as executor:
+        ...     Flow.of(-1, 2, 3).submit_map(executor, must_positive, lambda *_: [0]).to_list()
+        [0, 2, 3]
         """
         if not recover:
             return Flow(executor.map(fn, self.iterable))
 
-        def create_iter() -> Iterator[R]:
-            futures = [executor.submit(fn, item) for item in self.iterable]
-            items = list(self.iterable)  # Store items to reference in case of exception
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield fn(it)
+            except Exception as e:
+                yield from recover(it, e)
 
-            for future, item in zip(futures, items):
-                try:
-                    yield future.result()
-                except Exception as e:
-                    yield from recover(item, e)
-
-        return Flow(create_iter())
+        return self.submit_flatmap(executor, wrapper)
 
     def submit[R](self, executor: Executor, fn: Callable[[T], R], /) -> "FutureFlow[R]":
         """
@@ -149,14 +152,13 @@ class Flow[T]:
         if not recover:
             return Flow(chain.from_iterable(map(fn, self.iterable)))
 
-        def create_iter() -> Iterator[R]:
-            for it in self:
-                try:
-                    yield from fn(it)
-                except Exception as e:
-                    yield from recover(it, e)
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield from fn(it)
+            except Exception as e:
+                yield from recover(it, e)
 
-        return Flow(create_iter())
+        return self.flatmap(wrapper)
 
     def submit_flatmap[R](
         self,
@@ -188,17 +190,13 @@ class Flow[T]:
         if not recover:
             return Flow(chain.from_iterable(executor.map(fn, self.iterable)))
 
-        def create_iter() -> Iterator[R]:
-            futures = [executor.submit(fn, item) for item in self.iterable]
-            items = list(self.iterable)  # Store items to reference in case of exception
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield from fn(it)
+            except Exception as e:
+                yield from recover(it, e)
 
-            for future, item in zip(futures, items):
-                try:
-                    yield from future.result()
-                except Exception as e:
-                    yield from recover(item, e)
-
-        return Flow(create_iter())
+        return self.submit_flatmap(executor, wrapper)
 
     def filter(self, fn: Callable[[T], bool], /) -> "Flow[T]":
         """
