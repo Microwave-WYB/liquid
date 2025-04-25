@@ -359,7 +359,7 @@ class Flow[T]:
         yield from self.iterable
 
     def __repr__(self) -> str:
-        return f"Flow({self.iterable})"
+        return f"{self.__class__.__name__}({self.iterable})"
 
     @classmethod
     def of(cls, *items: T) -> "Flow[T]":
