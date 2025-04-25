@@ -1,3 +1,14 @@
+# /// script
+# requires-python = ">=3.13"
+# dependencies = [
+#     "ktflow",
+#     "tqdm",
+# ]
+#
+# [tool.uv.sources]
+# ktflow = { path = "." }
+# ///
+
 import shutil
 import threading
 from collections.abc import Callable
@@ -7,7 +18,7 @@ from pathlib import Path
 import httpx
 from tqdm import tqdm
 
-from ktflow.core import Flow
+from ktflow import Flow
 
 lock = threading.Lock()
 
@@ -27,15 +38,15 @@ def infer_name(url: str) -> str:
     return url.split("/")[-1]
 
 
+@withlock
 def create_temp_file(dest: Path) -> Path:
     i = 0
     name = dest.name
     tempfile = dest.parent / f"{name}.part"
-    with lock:
-        while dest.exists() or tempfile.exists():
-            i += 1
-            dest = dest.parent / f"{i}_{name}"
-            tempfile = dest.parent / f"{i}_{name}.part"
+    while dest.exists() or tempfile.exists():
+        i += 1
+        dest = dest.parent / f"{i}_{name}"
+        tempfile = dest.parent / f"{i}_{name}.part"
     tempfile.touch()
     return tempfile
 
@@ -47,7 +58,6 @@ def rename_temp_file(temp_file: Path) -> Path:
 
 
 def download_one(url: str, dest: Path) -> Path:
-    print(f"Downloading {url} to {dest}")
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     with httpx.stream("GET", url) as response:
@@ -78,3 +88,4 @@ with ThreadPoolExecutor(5) as executor:
             total=len(urls),
         )
     )
+
