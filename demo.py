@@ -3,7 +3,6 @@
 # dependencies = [
 #     "httpx",
 #     "ktflow",
-#     "tqdm",
 # ]
 #
 # [tool.uv.sources]
@@ -12,12 +11,11 @@
 
 import shutil
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
-from tqdm import tqdm
 
 from ktflow import Flow
 
@@ -39,6 +37,11 @@ def infer_name(url: str) -> str:
     return url.split("/")[-1]
 
 
+def recover_infer_name(url: str, e: Exception) -> Iterator[str]:
+    print(f"Error occurred while inferring name for {url}. Falling back to 'file'")
+    yield "file"
+
+
 @withlock
 def create_temp_file(dest: Path) -> Path:
     i = 0
@@ -52,7 +55,9 @@ def create_temp_file(dest: Path) -> Path:
     return tempfile
 
 
-def rename_temp_file(temp_file: Path) -> Path:
+def rename_temp_file(temp_file: Path) -> Path | None:
+    if not temp_file.exists():
+        return None
     target = temp_file.with_name(temp_file.name[:-5])
     shutil.move(temp_file, target)
     return target
@@ -69,22 +74,28 @@ def download_one(url: str, dest: Path) -> Path:
     return dest
 
 
-urls = ["http://ipv4.download.thinkbroadband.com/1MB.zip" for _ in range(10)]
+def recover_download_one(pair: tuple[str, Path], e: Exception) -> Iterator[Path]:
+    url, dest = pair
+    print(f"Error occurred while downloading {url}: {e}")
+    raise StopIteration  # Drop the download that failed
+
+
+urls = ["http://ipv4.download.thinkbroadband.com/1MB.zip" for _ in range(5)]
 
 Path("downloads").mkdir(parents=True, exist_ok=True)
 
 with ThreadPoolExecutor(5) as executor:
-    list(
-        tqdm(
+    (
+        Flow(urls)
+        .zip(
             Flow(urls)
-            .zip(
-                Flow(urls)
-                .submit_map(executor, infer_name)
-                .map(lambda name: Path.cwd() / "downloads" / name)
-                .map(create_temp_file)
-            )
-            .submit_map(executor, lambda pair: download_one(*pair))
-            .map(rename_temp_file),
-            total=len(urls),
+            .submit_map(executor, infer_name, recover=recover_infer_name)
+            .map(lambda name: Path.cwd() / "downloads" / name)
+            .map(create_temp_file)
         )
+        .on_each(lambda pair: print(f"Downloading {pair[0]} to {pair[1]}"))
+        .submit_map(executor, lambda pair: download_one(*pair), recover_download_one)
+        .on_each(lambda path: print(f"File saved to {path}"))
+        .map(rename_temp_file)
+        .collect(lambda path: print(f"File renamed to {path}"))
     )
