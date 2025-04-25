@@ -18,13 +18,13 @@ Python `3.12` is the minimum required version. This library is heavily based on 
 You can simply install it using pip:
 
 ```bash
-pip install git+https://github.com/Microwave-WYB/ktflow.git
+pip install git+https://github.com/Microwave-WYB/liquid.git
 ```
 
 ## Hello World Example
 
 ```python
-from ktflow import Flow
+from liquid import Flow
 
 print(
     Flow.of("Hello", "World")
@@ -45,7 +45,7 @@ HELLO WORLD
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
-from ktflow import Flow
+from liquid import Flow
 
 with ThreadPoolExecutor(max_workers=4) as executor:
     result = (
@@ -77,12 +77,12 @@ print(result)  # [0, 20, 30]
 
 ## Demo
 
-[demo.py](/demo.py) is a simple parallel downloader that demonstrates the usage of ktflow.
+[demo.py](/demo.py) is a simple parallel downloader that demonstrates the usage of liquid.
 
 You can run the demo script using `uv`:
 
 ```bash
-git clone https://github.com/Microwave-WYB/ktflow.git
-cd ktflow
+git clone https://github.com/Microwave-WYB/liquid.git
+cd liquid
 uv run demo.py
 ```
