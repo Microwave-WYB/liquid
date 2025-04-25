@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from ktflow!")
+from ktflow.core import Flow
+
+__all__ = ["Flow"]
