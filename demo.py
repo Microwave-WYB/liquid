@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from ktflow import Flow
+from liquid import Flow
 
 lock = threading.Lock()
 
@@ -95,7 +95,7 @@ with ThreadPoolExecutor(5) as executor:
         Flow(urls)
         .zip(file_creation_flow)
         .on_each(lambda pair: print(f"Downloading {pair[0]} to {pair[1]}"))
-        .submit_map(executor, lambda pair: download_one(*pair), recover_download_one)
+        .submit_map_as_completed(executor, lambda pair: download_one(*pair), recover_download_one)
         .on_each(lambda path: print(f"File saved to {path}"))
         .map(rename_temp_file)
     )

@@ -1,6 +1,6 @@
-# ktflow
+# Liquid
 
-A simple, functional flow library for Python that allows method chaining for data processing operations, inspired by Kotlin's Flow.
+A simple, functional flow library for Python that allows method chaining for data processing operations, inspired by Kotlin's Flow and Java's Stream API.
 
 ## Features
 

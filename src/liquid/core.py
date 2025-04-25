@@ -73,6 +73,21 @@ class Flow[T]:
 
         return self.flatmap(wrapper)
 
+    def submit[R](self, executor: Executor, fn: Callable[[T], R], /) -> "Flow[Future[R]]":
+        """
+        Submit the function to each element of the flow using the executor.
+
+        >>> from concurrent.futures import ThreadPoolExecutor
+        >>> with ThreadPoolExecutor(max_workers=3) as executor:
+        ...     flow = Flow.of(1, 2, 3).submit(executor, lambda x: x * 2).to_list()
+        ...     for future in flow:
+        ...         print(future.result())
+        2
+        4
+        6
+        """
+        return Flow([executor.submit(fn, item) for item in self.iterable])
+
     def submit_map[R](
         self,
         executor: Executor,
@@ -111,20 +126,38 @@ class Flow[T]:
 
         return self.submit_flatmap(executor, wrapper)
 
-    def submit[R](self, executor: Executor, fn: Callable[[T], R], /) -> "FutureFlow[R]":
+    def submit_map_as_completed[R](
+        self,
+        executor: Executor,
+        fn: Callable[[T], R],
+        /,
+        recover: Callable[[T, Exception], Iterable[R]] | None = None,
+    ) -> "Flow[R]":
         """
-        Submit the function to each element of the flow using the executor.
+        Submit the function to each element of the flow using the executor
+        and return a flow of futures in the order they are completed.
+
+        This is useful when you don't care about the order of the results.
 
         >>> from concurrent.futures import ThreadPoolExecutor
         >>> with ThreadPoolExecutor(max_workers=3) as executor:
-        ...     flow = Flow.of(1, 2, 3).submit(executor, lambda x: x * 2).to_list()
-        ...     for future in flow:
-        ...         print(future.result())
-        2
-        4
-        6
+        ...     (
+        ...         Flow.of(1, 2, 3)
+        ...         .submit_map_as_completed(executor, lambda x: x * 2)
+        ...         .to_set()
+        ...     )
+        {2, 4, 6}
         """
-        return FutureFlow([executor.submit(fn, item) for item in self.iterable])
+        if not recover:
+            return self.submit(executor, fn).through(as_completed).map(lambda f: f.result())
+
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield fn(it)
+            except Exception as e:
+                yield from recover(it, e)
+
+        return self.submit(executor, wrapper).through(as_completed).flatmap(lambda f: f.result())
 
     def flatmap[R](
         self,
@@ -197,6 +230,57 @@ class Flow[T]:
                 yield from recover(it, e)
 
         return self.submit_flatmap(executor, wrapper)
+
+    def submit_flatmap_as_completed[R](
+        self,
+        executor: Executor,
+        fn: Callable[[T], Iterable[R]],
+        /,
+        recover: Callable[[T, Exception], Iterable[R]] | None = None,
+    ) -> "Flow[R]":
+        """
+        Submit the function to each element of the flow using the executor
+        and return a flow of futures in the order they are completed.
+
+        This is useful when you don't care about the order of the results.
+
+        >>> from concurrent.futures import ThreadPoolExecutor
+        >>> with ThreadPoolExecutor(max_workers=3) as executor:
+        ...     (
+        ...         Flow.of(1, 2, 3)
+        ...         .submit_flatmap_as_completed(executor, lambda x: [x, x * 2])
+        ...         .to_set()
+        ...     )
+        {1, 2, 3, 4, 6}
+        """
+        if not recover:
+            return self.submit(executor, fn).through(as_completed).flatmap(lambda f: f.result())
+
+        def wrapper(it: T) -> Iterator[R]:
+            try:
+                yield from fn(it)
+            except Exception as e:
+                yield from recover(it, e)
+
+        return self.submit(executor, wrapper).through(as_completed).flatmap(lambda f: f.result())
+
+    def through[R](self, fn: Callable[[Iterable[T]], Iterator[R]], /) -> "Flow[R]":
+        """
+        Pass the flow to a function that takes an iterable and returns an iterable.
+        This is useful for integrating with other libraries or custom processing.
+
+        >>> from concurrent.futures import ThreadPoolExecutor, as_completed
+        >>> with ThreadPoolExecutor(max_workers=3) as executor:
+        ...     (
+        ...         Flow.of(1, 2, 3)
+        ...         .submit(executor, lambda x: x * 2)
+        ...         .through(as_completed)
+        ...         .map(lambda f: f.result())
+        ...         .to_set()
+        ...     )
+        {2, 4, 6}
+        """
+        return Flow(fn(self.iterable))
 
     def filter(self, fn: Callable[[T], bool], /) -> "Flow[T]":
         """
@@ -350,6 +434,64 @@ class Flow[T]:
     def to_set(self) -> set[T]:
         return {it for it in self}
 
+    def count(self) -> int:
+        """
+        Count the number of elements in the flow.
+
+        >>> Flow.of(1, 2, 3, 4, 5).count()
+        5
+        """
+        return sum(1 for _ in self)
+
+    def group_by[K](self, key_fn: Callable[[T], K], /) -> dict[K, list[T]]:
+        """
+        Group elements by a key function.
+
+        >>> Flow.of(1, 2, 3, 4, 5).group_by(lambda x: x % 2)
+        {1: [1, 3, 5], 0: [2, 4]}
+        """
+        result: dict[K, list[T]] = {}
+        for item in self:
+            k = key_fn(item)
+            if k not in result:
+                result[k] = []
+            result[k].append(item)
+        return result
+
+    def partition_by[K](self, key_fn: Callable[[T], K], /) -> dict[K, "Flow[T]"]:
+        """
+        Partition elements by a key function.
+
+        >>> Flow.of(1, 2, 3, 4, 5).partition_by(lambda x: x % 2)
+        {1: Flow([1, 3, 5]), 0: Flow([2, 4])}
+        """
+        result = self.group_by(key_fn)
+        return {k: Flow(v) for k, v in result.items()}
+
+    def any(self, fn: Callable[[T], bool], /) -> bool:
+        """
+        Check if any element in the flow satisfies the predicate function.
+
+        >>> Flow.of(1, 2, 3).any(lambda x: x > 2)
+        True
+
+        >>> Flow.of(1, 2, 3).any(lambda x: x > 3)
+        False
+        """
+        return any(fn(it) for it in self)
+
+    def all(self, fn: Callable[[T], bool], /) -> bool:
+        """
+        Check if all elements in the flow satisfy the predicate function.
+
+        >>> Flow.of(1, 2, 3).all(lambda x: x > 0)
+        True
+
+        >>> Flow.of(1, 2, 3).all(lambda x: x > 1)
+        False
+        """
+        return all(fn(it) for it in self)
+
     def __iter__(self) -> Iterator[T]:
         yield from self.iterable
 
@@ -365,44 +507,3 @@ class Flow[T]:
         Flow((1, 2, 3))
         """
         return Flow(items)
-
-
-class FutureFlow[T](Flow[Future[T]]):
-    def __init__(self, iterable: Iterable[Future[T]], /) -> None:
-        super().__init__(iterable)
-
-    def map_as_completed[R](
-        self,
-        fn: Callable[[Future[T]], R],
-        /,
-        recover: Callable[[Future[T], Exception], Iterable[R]] | None = None,
-    ) -> "Flow[R]":
-        """
-        Map each future to a value using the provided function and yield the results
-
-        This will yield in the order as they are completed instead of the order they were submitted
-
-        >>> from concurrent.futures import ThreadPoolExecutor
-        >>> with ThreadPoolExecutor(max_workers=3) as executor:
-        ...     Flow.of(1, 2, 3).submit(executor, lambda x: x * 2).map_as_completed(lambda x: x.result()).to_set()
-        {2, 4, 6}
-
-        You can pass a custom `recover` function to handle exceptions raised by the function.
-        The `recover` function will be called with the future that caused the error and the exception itself.
-        It should return an iterable of results.
-        """
-        if not recover:
-
-            def create_iter() -> Iterator[R]:
-                for future in as_completed(self):
-                    yield fn(future)
-        else:
-
-            def create_iter() -> Iterator[R]:
-                for future in as_completed(self):
-                    try:
-                        yield fn(future)
-                    except Exception as e:
-                        yield from recover(future, e)
-
-        return Flow(create_iter())

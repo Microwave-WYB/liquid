@@ -1,5 +1,5 @@
 [project]
-name = "ktflow"
+name = "liquid"
 version = "0.1.0"
 description = "Kotlin inspired Python library for data flow manipulation"
 readme = "README.md"
